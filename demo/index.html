@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mciso</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 1400px; margin: 1.5rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; }
+  #drop { border: 2px dashed #888; border-radius: 8px; padding: 1.5rem 1rem; text-align: center; margin: 1rem 0; }
+  #drop.hover { border-color: #4a90d9; background: rgba(74, 144, 217, 0.08); }
+  #bar { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; height: 1.8em; overflow: hidden; }
+  #bar button { font: inherit; padding: 2px 10px; }
+  #bar button[disabled] { opacity: 0.4; }
+  #status { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #view { display: none; width: 100%; touch-action: none; cursor: grab; border-radius: 4px;
+    background: repeating-conic-gradient(#8882 0% 25%, transparent 0% 50%) 0 0/16px 16px; }
+  #view.drag { cursor: grabbing; }
+</style>
+<h1>mciso - in-browser isometric renderer</h1>
+<div id="drop">
+  Drop a Minecraft world folder here, or
+  <input type="file" id="picker" webkitdirectory multiple>
+</div>
+<div id="bar">
+  <span id="status">loading wasm...</span>
+</div>
+<canvas id="view"></canvas>
+<script type="module">
+import { createViewer } from "./viewer.js";
+
+const canvas = document.getElementById("view");
+const drop = document.getElementById("drop");
+const viewer = createViewer({
+  canvas,
+  bar: document.getElementById("bar"),
+  statusEl: document.getElementById("status"),
+});
+
+viewer.ready
+  .then(m => viewer.status(`ready - ${m.assets} assets, ${m.threads} threads, waiting for a world`))
+  .catch(e => viewer.status(e.message));
+
+const REGION = /(^|\/)r\.(-?\d+)\.(-?\d+)\.mca$/;
+function pickRegions(files) {
+  const candidates = files
+    .map(f => ({ f, m: REGION.exec(f.path) }))
+    .filter(c => c.m);
+  const groups = new Map();
+  for (const c of candidates) {
+    const dir = c.f.path.slice(0, c.f.path.length - c.m[0].length + c.m[1].length);
+    if (!groups.has(dir)) groups.set(dir, []);
+    groups.get(dir).push({ file: c.f.file, rx: +c.m[2], rz: +c.m[3] });
+  }
+  let best = [];
+  for (const [dir, list] of groups) {
+    const preferred = /(^|\/)region\/?$/.test(dir);
+    if (list.length > best.length || (preferred && !best.preferred)) {
+      best = list;
+      best.preferred = preferred;
+    }
+  }
+  return best;
+}
+
+async function renderWorld(files) {
+  const regions = pickRegions(files);
+  if (!regions.length) { viewer.status("no r.X.Z.mca region files found in that folder"); return; }
+  viewer.status(`loading ${regions.length} region file(s)...`);
+  const bufs = await Promise.all(regions.map(async r => ({ rx: r.rx, rz: r.rz, buf: await r.file.arrayBuffer() })));
+  await viewer.loadWorld(bufs);
+}
+window.mcisoRenderWorld = renderWorld;
+
+document.getElementById("picker").addEventListener("change", e => {
+  renderWorld([...e.target.files].map(file => ({ file, path: file.webkitRelativePath || file.name })));
+});
+
+async function walkEntry(entry, files) {
+  if (entry.isFile) {
+    const file = await new Promise((res, rej) => entry.file(res, rej));
+    files.push({ file, path: entry.fullPath });
+  } else if (entry.isDirectory) {
+    const reader = entry.createReader();
+    for (;;) {
+      const batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+      if (!batch.length) break;
+      for (const e of batch) await walkEntry(e, files);
+    }
+  }
+}
+
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("hover"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("hover"));
+drop.addEventListener("drop", async e => {
+  e.preventDefault();
+  drop.classList.remove("hover");
+  const files = [];
+  for (const item of e.dataTransfer.items) {
+    const entry = item.webkitGetAsEntry?.();
+    if (entry) await walkEntry(entry, files);
+  }
+  renderWorld(files);
+});
+</script>
+</html>

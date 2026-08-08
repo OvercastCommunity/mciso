@@ -1,0 +1,4 @@
+[submodule "textures_modern"]
+	path = textures_modern
+	url = https://github.com/Faithful-Pack/Default-Java.git
+	branch = 26.1

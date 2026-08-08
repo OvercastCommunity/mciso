@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mciso maps</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 1400px; margin: 1.5rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; }
+  #pick { display: flex; gap: 8px; margin: 1rem 0; }
+  #filter { font: inherit; padding: 2px 8px; flex: 0 1 16em; }
+  #list { font: inherit; flex: 1; min-width: 0; }
+  #bar { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; height: 1.8em; overflow: hidden; }
+  #bar button { font: inherit; padding: 2px 10px; }
+  #bar button[disabled] { opacity: 0.4; }
+  #status { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #view { display: none; width: 100%; touch-action: none; cursor: grab; border-radius: 4px;
+    background: repeating-conic-gradient(#8882 0% 25%, transparent 0% 50%) 0 0/16px 16px; }
+  #view.drag { cursor: grabbing; }
+</style>
+<h1>mciso - map browser</h1>
+<div id="pick">
+  <input id="filter" type="search" placeholder="filter maps..." disabled>
+  <select id="list" disabled><option>loading map index...</option></select>
+</div>
+<div id="bar">
+  <span id="status">loading wasm...</span>
+</div>
+<canvas id="view"></canvas>
+<script type="module">
+import { createViewer } from "./viewer.js";
+
+const filter = document.getElementById("filter");
+const list = document.getElementById("list");
+const viewer = createViewer({
+  canvas: document.getElementById("view"),
+  bar: document.getElementById("bar"),
+  statusEl: document.getElementById("status"),
+});
+
+viewer.ready
+  .then(m => viewer.status(`ready - ${m.assets} assets, ${m.threads} threads, pick a map`))
+  .catch(e => viewer.status(e.message));
+
+let maps = [];
+let current = "";
+
+function fill() {
+  const q = filter.value.trim().toLowerCase();
+  const shown = q ? maps.filter(m => m.name.includes(q)) : maps;
+  list.replaceChildren(new Option(`${shown.length} of ${maps.length} maps`, ""));
+  for (const m of shown) {
+    list.add(new Option(`${m.name} (${m.blocks.toLocaleString()} blocks)`, m.name));
+  }
+  list.value = shown.some(m => m.name === current) ? current : "";
+}
+
+async function show(name) {
+  if (!name || name === current) return;
+  current = name;
+  history.replaceState(null, "", `#${encodeURIComponent(name)}`);
+  viewer.status(`fetching ${name}...`);
+  try {
+    const r = await fetch(`maps/${encodeURIComponent(name)}.surf.gz`);
+    if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
+    let buf = await r.arrayBuffer();
+    if (new Uint8Array(buf)[0] === 0x1f && new Uint8Array(buf)[1] === 0x8b) {
+      const inflated = new Response(buf).body.pipeThrough(new DecompressionStream("gzip"));
+      buf = await new Response(inflated).arrayBuffer();
+    }
+    await viewer.loadSurface(buf);
+  } catch (e) {
+    viewer.status(e.message);
+  }
+}
+
+list.addEventListener("change", () => show(list.value));
+filter.addEventListener("input", fill);
+addEventListener("hashchange", () => {
+  const name = decodeURIComponent(location.hash.slice(1));
+  if (name && name !== current) { fill(); list.value = name; show(name); }
+});
+
+fetch("maps/index.json")
+  .then(r => {
+    if (!r.ok) throw new Error("maps/index.json missing - run: cargo run --release --bin surfaces -- <maps-dir>");
+    return r.json();
+  })
+  .then(index => {
+    maps = index;
+    filter.disabled = false;
+    list.disabled = false;
+    fill();
+    const name = decodeURIComponent(location.hash.slice(1));
+    if (name) { list.value = name; show(name); }
+  })
+  .catch(e => viewer.status(e.message));
+</script>
+</html>

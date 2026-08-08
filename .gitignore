@@ -1,0 +1,10 @@
+/target
+/out
+.idea
+.claude
+CLAUDE.md
+*.DS_Store
+
+/demo/assets.bin
+/demo/mciso.wasm
+/demo/maps
