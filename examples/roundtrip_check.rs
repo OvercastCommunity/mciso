@@ -4,11 +4,7 @@ use mciso::{artist, render_view, surface, world};
 
 fn main() -> anyhow::Result<()> {
     let artist = artist::TextureArtist::default_packs();
-    let enc = Encoding {
-        max_w: 1920,
-        max_h: 1080,
-        colors: Some(256),
-    };
+    let enc = Encoding::default();
     for arg in std::env::args().skip(1) {
         let w = world::load_world(arg.as_ref())?;
         let direct = w.extract_surface(&|name| artist.occludes(name));

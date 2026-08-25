@@ -222,6 +222,7 @@ pub extern "C" fn mciso_render(turns: u32, max_w: u32, max_h: u32, colors: u32) 
         max_w,
         max_h,
         colors: (colors > 0).then_some(colors.min(256) as u16),
+        overshoot: false,
     };
     let png = render_view(surface, rotation(turns), artist, (max_w, max_h))
         .and_then(|(image, crop, _)| encode_outputs(&image, crop, &enc));

@@ -92,6 +92,12 @@ struct Args {
         help = "Average texels when scaling textures down (default keeps the pixelated look)"
     )]
     smooth: bool,
+
+    #[arg(
+        long,
+        help = "Enforce --max-size instead of favoring integer-factor scaling"
+    )]
+    hard_cap: bool,
 }
 
 fn parse_size(s: &str) -> Result<(u32, u32), String> {
@@ -139,6 +145,7 @@ fn main() -> Result<()> {
         max_w: args.max_size.0,
         max_h: args.max_size.1,
         colors: (!args.rgba).then_some(args.colors),
+        overshoot: !args.hard_cap,
     };
     let results: Vec<(&maps::MapFolder, Result<bool>)> = maps
         .par_iter()

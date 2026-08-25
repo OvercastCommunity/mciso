@@ -11,11 +11,13 @@ use crate::render::{MAX_HEIGHT, MAX_WIDTH};
 const MAX_THUMB_WIDTH: u32 = 350;
 const MAX_THUMB_HEIGHT: u32 = 250;
 const THUMB_COLORS: u16 = 64;
+const OVERSHOOT_SLACK: f64 = 1.25;
 
 pub struct Encoding {
     pub max_w: u32,
     pub max_h: u32,
     pub colors: Option<u16>,
+    pub overshoot: bool,
 }
 
 impl Default for Encoding {
@@ -24,6 +26,7 @@ impl Default for Encoding {
             max_w: MAX_WIDTH,
             max_h: MAX_HEIGHT,
             colors: Some(256),
+            overshoot: true,
         }
     }
 }
@@ -40,23 +43,55 @@ pub fn write_outputs(img: &RgbaImage, crop: Crop, out_file: &Path, enc: &Encodin
 }
 
 pub fn encode_outputs(img: &RgbaImage, crop: Crop, enc: &Encoding) -> Result<(Vec<u8>, Vec<u8>)> {
-    let main = match resize_to_fit(img, crop, enc.max_w, enc.max_h) {
-        Some(m) => m,
-        None => crop_copy(img, crop),
-    };
-    let main_png = encode_png(&main, enc.colors)?;
+    let (main, main_png) = encode_main(img, crop, enc)?;
     let full = Crop {
         x: 0,
         y: 0,
         w: main.width() as usize,
         h: main.height() as usize,
     };
-    let thumb = resize_to_fit(&main, full, MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT);
+    let f = snap_factor(full.w, full.h, MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT);
+    let thumb = if f >= 2 && full.w >= f && full.h >= f {
+        Some(box_reduce(&main, full, f))
+    } else if f >= 2 {
+        resize_to_fit(&main, full, MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT)
+    } else {
+        None
+    };
     let thumb_png = encode_png(
         thumb.as_ref().unwrap_or(&main),
         enc.colors.map(|c| c.min(THUMB_COLORS)),
     )?;
     Ok((main_png, thumb_png))
+}
+
+fn snap_factor(w: usize, h: usize, max_w: u32, max_h: u32) -> usize {
+    (w.div_ceil(max_w as usize)).max(h.div_ceil(max_h as usize))
+}
+
+fn encode_main(img: &RgbaImage, crop: Crop, enc: &Encoding) -> Result<(RgbaImage, Vec<u8>)> {
+    let Some(fitted) = resize_to_fit(img, crop, enc.max_w, enc.max_h) else {
+        let main = crop_copy(img, crop);
+        let png = encode_png(&main, enc.colors)?;
+        return Ok((main, png));
+    };
+    let fitted_png = encode_png(&fitted, enc.colors)?;
+    if !enc.overshoot {
+        return Ok((fitted, fitted_png));
+    }
+    let ratio = (crop.w as f64 / enc.max_w as f64).max(crop.h as f64 / enc.max_h as f64);
+    let f = ratio.floor() as usize;
+    let snapped = if f >= 2 && crop.w >= f && crop.h >= f {
+        box_reduce(img, crop, f)
+    } else {
+        crop_copy(img, crop)
+    };
+    let snapped_png = encode_png(&snapped, enc.colors)?;
+    if (snapped_png.len() as f64) <= fitted_png.len() as f64 * OVERSHOOT_SLACK {
+        Ok((snapped, snapped_png))
+    } else {
+        Ok((fitted, fitted_png))
+    }
 }
 
 fn encode_png(out: &RgbaImage, colors: Option<u16>) -> Result<Vec<u8>> {
@@ -235,6 +270,44 @@ mod tests {
     }
 
     #[test]
+    fn thumbnail_snaps_to_integer_factor_of_main() {
+        let img = RgbaImage::new(1136, 800);
+        let (_, thumb_png) = encode_outputs(&img, full(&img), &Encoding::default()).unwrap();
+        let thumb = image::load_from_memory(&thumb_png).unwrap();
+        assert_eq!((thumb.width(), thumb.height()), (284, 200));
+    }
+
+    #[test]
+    fn small_main_reuses_itself_as_thumbnail() {
+        let img = RgbaImage::new(300, 200);
+        let (_, thumb_png) = encode_outputs(&img, full(&img), &Encoding::default()).unwrap();
+        let thumb = image::load_from_memory(&thumb_png).unwrap();
+        assert_eq!((thumb.width(), thumb.height()), (300, 200));
+    }
+
+    #[test]
+    fn default_keeps_integer_reduction_above_cap() {
+        let mut img = RgbaImage::new(8000, 2000);
+        img.put_pixel(10, 10, image::Rgba([1, 2, 3, 255]));
+        let (main_png, _) = encode_outputs(&img, full(&img), &Encoding::default()).unwrap();
+        let main = image::load_from_memory(&main_png).unwrap();
+        assert_eq!((main.width(), main.height()), (2000, 500));
+    }
+
+    #[test]
+    fn hard_cap_never_exceeds_max_size() {
+        let mut img = RgbaImage::new(8000, 2000);
+        img.put_pixel(10, 10, image::Rgba([1, 2, 3, 255]));
+        let enc = Encoding {
+            overshoot: false,
+            ..Encoding::default()
+        };
+        let (main_png, _) = encode_outputs(&img, full(&img), &enc).unwrap();
+        let main = image::load_from_memory(&main_png).unwrap();
+        assert_eq!((main.width(), main.height()), (1920, 480));
+    }
+
+    #[test]
     fn writes_both_files_with_expected_sizes() {
         let dir = std::env::temp_dir().join(format!("mciso-compress-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -245,9 +318,9 @@ mod tests {
         write_outputs(&img, full(&img), &out, &Encoding::default()).unwrap();
 
         let main = image::open(&out).unwrap();
-        assert_eq!((main.width(), main.height()), (1920, 480));
+        assert_eq!((main.width(), main.height()), (2000, 500));
         let thumb = image::open(dir.join("demo_tl-thumb.png")).unwrap();
-        assert_eq!((thumb.width(), thumb.height()), (350, 88));
+        assert_eq!((thumb.width(), thumb.height()), (333, 83));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

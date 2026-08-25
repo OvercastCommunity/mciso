@@ -7,8 +7,12 @@ four cropped isometric views and corresponding thumbnails.
 
 A full batch over the CommunityMaps, PublicMaps, and PrivateMaps repos - 2,457 maps,
 including every `map.xml` variant - renders in about 100 seconds on an M2 Pro,
-producing 19,656 PNGs (~1.5 GB). Outputs are quantized to 256-color indexed PNGs
+producing 19,656 PNGs (~1.46 GB). Outputs are quantized to 256-color indexed PNGs
 (via libimagequant), roughly a third the size of the equivalent RGBA encoding.
+
+Thumbnails use integer-factor reductions to keep pixel art crisp and PNGs small.
+Full-size images may exceed `--max-size` when an integer reduction has a similar
+file size; use `--hard-cap` to enforce the limit.
 
 ## Quickstart
 
@@ -43,6 +47,7 @@ Options:
       --colors <N>        Palette size for indexed PNG output (thumbnails cap at 64) [default: 256]
       --rgba              Write full-color PNGs instead of indexed (skip quantization)
       --smooth            Average texels when scaling textures down (default keeps the pixelated look)
+      --hard-cap          Enforce --max-size instead of favoring integer-factor scaling
 
 Environment:
   MCISO_TIMING       Print per-stage timings
@@ -57,9 +62,10 @@ Each PGM `<variant>` is rendered separately. Server-version conditions are evalu
 using the newest declared server version. A world may be in the map folder, the
 variant's `world` folder, `_imaging_edit`, `DIM-1`, or `DIM1`.
 
-For each map id, mciso writes `{id}_{tl,tr,br,bl}.png` (fit within 1920x1080) and
-`{id}_{side}-thumb.png` (fit within 350x250). The id follows PGM's `MapInfoImpl` slug
-rules, with one id per variant. Maps whose four full-size outputs already exist are
+For each map id, mciso writes `{id}_{tl,tr,br,bl}.png` (near 1920x1080; up to about
+2x larger unless `--hard-cap`) and `{id}_{side}-thumb.png` (an integer-factor
+reduction fitting 350x250). The id follows PGM's `MapInfoImpl` slug rules, with one
+id per variant. Maps whose four full-size outputs already exist are
 skipped. `--list` prints ids and world directories without rendering.
 
 ## Browser demo
