@@ -28,8 +28,8 @@ export function createViewer({ canvas, bar, statusEl }) {
 
   const ready = call({ type: "init" });
 
-  const SIDES = ["tl", "tr", "br", "bl"];
-  const SIDE_LABELS = ["top left", "top right", "bottom right", "bottom left"];
+  const SIDES = ["tr", "br", "bl", "tl"];
+  const SIDE_LABELS = ["top right", "bottom right", "bottom left", "top left"];
   const TIERS = [2, 4, 8, 16, 32];
   const MAX_Z = 32;
   const RENDER_CAP = 32 << 20;

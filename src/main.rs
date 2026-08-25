@@ -77,7 +77,7 @@ struct Args {
         value_name = "N",
         default_value_t = 256,
         value_parser = clap::value_parser!(u16).range(2..=256),
-        help = "Palette size for indexed PNG output"
+        help = "Palette size for indexed PNG output (thumbnails cap at 64)"
     )]
     colors: u16,
 
@@ -86,6 +86,12 @@ struct Args {
         help = "Write full-color PNGs instead of indexed (skip quantization)"
     )]
     rgba: bool,
+
+    #[arg(
+        long,
+        help = "Average texels when scaling textures down (default keeps the pixelated look)"
+    )]
+    smooth: bool,
 }
 
 fn parse_size(s: &str) -> Result<(u32, u32), String> {
@@ -96,10 +102,10 @@ fn parse_size(s: &str) -> Result<(u32, u32), String> {
 }
 
 const ROTATIONS: [(&str, render::Rotation); 4] = [
-    ("tl", render::Rotation::TopLeft),
-    ("tr", render::Rotation::TopRight),
-    ("br", render::Rotation::BottomRight),
-    ("bl", render::Rotation::BottomLeft),
+    ("tr", render::Rotation::TopLeft),
+    ("br", render::Rotation::TopRight),
+    ("bl", render::Rotation::BottomRight),
+    ("tl", render::Rotation::BottomLeft),
 ];
 
 fn main() -> Result<()> {
@@ -128,7 +134,7 @@ fn main() -> Result<()> {
     }
     println!("Found {} {} to render", maps.len(), map_word(maps.len()));
 
-    let artist = artist::TextureArtist::default_packs();
+    let artist = artist::TextureArtist::default_packs().with_smooth(args.smooth);
     let enc = compress::Encoding {
         max_w: args.max_size.0,
         max_h: args.max_size.1,

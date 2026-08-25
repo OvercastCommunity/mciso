@@ -3,11 +3,11 @@
 mciso renders Minecraft Anvil worlds from versions 1.8 onward. For each map, it writes
 four cropped isometric views and corresponding thumbnails.
 
-![Isometric render of the map Incassum](docs/incassum_tr.png)
+![Isometric render of the map Incassum](docs/incassum_br.png)
 
 A full batch over the CommunityMaps, PublicMaps, and PrivateMaps repos - 2,457 maps,
 including every `map.xml` variant - renders in about 100 seconds on an M2 Pro,
-producing 19,656 PNGs (~1.6 GB). Outputs are quantized to 256-color indexed PNGs
+producing 19,656 PNGs (~1.5 GB). Outputs are quantized to 256-color indexed PNGs
 (via libimagequant), roughly a third the size of the equivalent RGBA encoding.
 
 ## Quickstart
@@ -40,8 +40,9 @@ Options:
   -j, --jobs <N>          Worker threads [default: all cores]
   -q, --quiet             Suppress per-map progress; print only warnings and the summary
       --max-size <WxH>    Cap output image size; also drives the adaptive render tile size [default: 1920x1080]
-      --colors <N>        Palette size for indexed PNG output [default: 256]
+      --colors <N>        Palette size for indexed PNG output (thumbnails cap at 64) [default: 256]
       --rgba              Write full-color PNGs instead of indexed (skip quantization)
+      --smooth            Average texels when scaling textures down (default keeps the pixelated look)
 
 Environment:
   MCISO_TIMING       Print per-stage timings

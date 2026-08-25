@@ -10,6 +10,7 @@ use crate::render::{MAX_HEIGHT, MAX_WIDTH};
 
 const MAX_THUMB_WIDTH: u32 = 350;
 const MAX_THUMB_HEIGHT: u32 = 250;
+const THUMB_COLORS: u16 = 64;
 
 pub struct Encoding {
     pub max_w: u32,
@@ -51,7 +52,10 @@ pub fn encode_outputs(img: &RgbaImage, crop: Crop, enc: &Encoding) -> Result<(Ve
         h: main.height() as usize,
     };
     let thumb = resize_to_fit(&main, full, MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT);
-    let thumb_png = encode_png(thumb.as_ref().unwrap_or(&main), enc.colors)?;
+    let thumb_png = encode_png(
+        thumb.as_ref().unwrap_or(&main),
+        enc.colors.map(|c| c.min(THUMB_COLORS)),
+    )?;
     Ok((main_png, thumb_png))
 }
 

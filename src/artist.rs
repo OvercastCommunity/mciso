@@ -26,6 +26,7 @@ pub struct TextureArtist {
     sprites: Mutex<HashMap<(String, u32, u32), Arc<Sprite>>>,
     occlusion: Mutex<HashMap<String, bool>>,
     unresolved: Mutex<HashSet<String>>,
+    smooth: bool,
 }
 
 impl TextureArtist {
@@ -41,7 +42,13 @@ impl TextureArtist {
             sprites: Mutex::new(HashMap::new()),
             occlusion: Mutex::new(HashMap::new()),
             unresolved: Mutex::new(HashSet::new()),
+            smooth: false,
         }
+    }
+
+    pub fn with_smooth(mut self, smooth: bool) -> TextureArtist {
+        self.smooth = smooth;
+        self
     }
 
     fn with_models(packs: Vec<Pack>, models: ModelStore) -> TextureArtist {
@@ -115,7 +122,7 @@ impl TextureArtist {
             }
         }
         match self.resolve(base, &props, turns) {
-            Some(faces) => textured_sprite(&faces, half_tile),
+            Some(faces) => textured_sprite(&faces, half_tile, self.smooth),
             None => {
                 if !self.packs.is_empty() && self.unresolved.lock().unwrap().insert(base.to_owned())
                 {

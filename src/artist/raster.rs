@@ -19,6 +19,7 @@ impl TextureArtist {
         half_tile: u32,
     ) -> Option<Sprite> {
         let (cell, sc) = (cell(half_tile), half_tile as f32 / 16.0);
+        let fp = footprint(self.smooth, half_tile);
         struct Prim<'a> {
             key: f32,
             elem: &'a Element,
@@ -101,7 +102,7 @@ impl TextureArtist {
                         }
                         let m = inv_tf(r, prim.xp, prim.q);
                         let (fa, fb) = face_ab(mdir, m, e.from, e.to);
-                        let rgba = sample(face, &tex, mdir, fa, fb, e.from, e.to);
+                        let rgba = sample(face, &tex, mdir, fa, fb, e.from, e.to, fp);
                         put(&mut px, x, y, rgba, tint, shade, cell);
                     }
                 }
@@ -119,6 +120,7 @@ impl TextureArtist {
         half_tile: u32,
     ) -> bool {
         let (cell, sc) = (cell(half_tile), half_tile as f32 / 16.0);
+        let fp = footprint(self.smooth, half_tile);
         let rot = e.rotation.unwrap();
         let (sin, cos) = rot.angle.to_radians().sin_cos();
         let scale = if rot.rescale {
@@ -179,7 +181,7 @@ impl TextureArtist {
                     if !(0.0..1.0).contains(&b) {
                         continue;
                     }
-                    let rgba = sample(face, &tex, dir, s, b, f, t);
+                    let rgba = sample(face, &tex, dir, s, b, f, t, fp);
                     put(px, x, y, rgba, tint, shade, cell);
                 }
             }
@@ -268,6 +270,15 @@ fn default_uv(dir: Dir, f: [f32; 3], t: [f32; 3]) -> [f32; 4] {
     }
 }
 
+fn footprint(smooth: bool, half_tile: u32) -> f32 {
+    if smooth {
+        1.0 / half_tile as f32
+    } else {
+        0.0
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn sample(
     face: &ModelFace,
     tex: &RgbaImage,
@@ -276,6 +287,7 @@ fn sample(
     b: f32,
     f: [f32; 3],
     t: [f32; 3],
+    fp: f32,
 ) -> [u8; 4] {
     let (a, b) = match face.rotation {
         90 => (b, 1.0 - a),
@@ -286,9 +298,46 @@ fn sample(
     let uv = face.uv.unwrap_or_else(|| default_uv(dir, f, t));
     let u = (uv[0] + (uv[2] - uv[0]) * a.clamp(0.0, 1.0)) / 16.0;
     let v = (uv[1] + (uv[3] - uv[1]) * b.clamp(0.0, 1.0)) / 16.0;
+    if fp > 0.0 {
+        let fu = (uv[2] - uv[0]).abs() * fp / 16.0;
+        let fv = (uv[3] - uv[1]).abs() * fp / 16.0;
+        return sample_area(tex, u, v, fu, fv);
+    }
     let tx = ((u * tex.width() as f32) as i64).clamp(0, tex.width() as i64 - 1) as u32;
     let ty = ((v * tex.height() as f32) as i64).clamp(0, tex.height() as i64 - 1) as u32;
     tex.get_pixel(tx, ty).0
+}
+
+fn sample_area(tex: &RgbaImage, u: f32, v: f32, fu: f32, fv: f32) -> [u8; 4] {
+    let (w, h) = (tex.width(), tex.height());
+    let lo =
+        |c: f32, f: f32, n: u32| (((c - f / 2.0) * n as f32).floor().max(0.0) as u32).min(n - 1);
+    let hi = |c: f32, f: f32, n: u32, l: u32| {
+        ((((c + f / 2.0) * n as f32).ceil()) as u32).clamp(l + 1, n)
+    };
+    let (x0, y0) = (lo(u, fu, w), lo(v, fv, h));
+    let (x1, y1) = (hi(u, fu, w, x0), hi(v, fv, h, y0));
+    let mut acc = [0.0f64; 4];
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let p = tex.get_pixel(x, y).0;
+            let a = p[3] as f64;
+            for c in 0..3 {
+                acc[c] += p[c] as f64 * a;
+            }
+            acc[3] += a;
+        }
+    }
+    if acc[3] <= 0.0 {
+        return [0, 0, 0, 0];
+    }
+    let n = ((x1 - x0) * (y1 - y0)) as f64;
+    [
+        (acc[0] / acc[3]).round() as u8,
+        (acc[1] / acc[3]).round() as u8,
+        (acc[2] / acc[3]).round() as u8,
+        (acc[3] / n).round() as u8,
+    ]
 }
 
 fn shade_tint(rgba: [u8; 4], tint: Option<[u8; 3]>, shade: f64) -> [u8; 4] {
@@ -393,7 +442,7 @@ fn face_at(x: usize, y: usize, half_tile: u32) -> Option<Face> {
     }
 }
 
-pub(super) fn textured_sprite(faces: &Faces, half_tile: u32) -> Sprite {
+pub(super) fn textured_sprite(faces: &Faces, half_tile: u32, smooth: bool) -> Sprite {
     let cell = cell(half_tile);
     let mut px = vec![0u8; cell * cell * 4];
     for y in 0..cell {
@@ -422,11 +471,17 @@ pub(super) fn textured_sprite(faces: &Faces, half_tile: u32) -> Sprite {
             };
             let (u, v) = if ft.rot90 { (v, 16.0 - u) } else { (u, v) };
             let tex = &ft.tex;
-            let tx = ((u.clamp(0.0, 15.999) / 16.0) * tex.width() as f64) as u32;
-            let ty = ((v.clamp(0.0, 15.999) / 16.0) * tex.height() as f64) as u32;
-            let texel = tex.get_pixel(tx.min(tex.width() - 1), ty.min(tex.height() - 1));
+            let texel = if smooth {
+                let f = 1.0 / half_tile as f32;
+                sample_area(tex, (u / 16.0) as f32, (v / 16.0) as f32, f, f)
+            } else {
+                let tx = ((u.clamp(0.0, 15.999) / 16.0) * tex.width() as f64) as u32;
+                let ty = ((v.clamp(0.0, 15.999) / 16.0) * tex.height() as f64) as u32;
+                tex.get_pixel(tx.min(tex.width() - 1), ty.min(tex.height() - 1))
+                    .0
+            };
             let i = (y * cell + x) * 4;
-            px[i..i + 4].copy_from_slice(&shade_tint(texel.0, ft.tint, shade));
+            px[i..i + 4].copy_from_slice(&shade_tint(texel, ft.tint, shade));
         }
     }
     px
