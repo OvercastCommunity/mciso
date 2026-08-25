@@ -1,0 +1,14 @@
+src/compress.rs
+  h_a954843f2693a3 55,60-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "7c01d37556a992cba17889119dc68ac9e1f94926",
+  "prompts": {},
+  "humans": {
+    "h_a954843f2693a3": {
+      "author": "TTtie <me@tttie.cz>"
+    }
+  }
+}
