@@ -52,10 +52,18 @@ pub fn encode_outputs(img: &RgbaImage, crop: Crop, enc: &Encoding) -> Result<(Ve
         h: main.height() as usize,
     };
     let thumb = resize_to_fit(&main, full, MAX_THUMB_WIDTH, MAX_THUMB_HEIGHT);
-    let thumb_png = encode_png(
-        thumb.as_ref().unwrap_or(&main),
-        enc.colors.map(|c| c.min(THUMB_COLORS)),
-    )?;
+    let thumb_png = {
+        let actual_thumb = encode_png(
+            thumb.as_ref().unwrap_or(&main),
+            enc.colors.map(|c| c.min(THUMB_COLORS)),
+        )?;
+        // Prefer full-res image if the thumbnail ends up larger than the main image
+        if actual_thumb.len() > main_png.len() {
+            main_png.clone()
+        } else {
+            actual_thumb
+        }
+    };
     Ok((main_png, thumb_png))
 }
 
