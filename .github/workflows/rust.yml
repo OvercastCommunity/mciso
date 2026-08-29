@@ -45,18 +45,19 @@ jobs:
           rustup target add x86_64-unknown-linux-musl
           sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build
-        run: cargo build --release --target x86_64-unknown-linux-musl
+        run: cargo build --release --target x86_64-unknown-linux-musl --features upload
       - name: Package
         run: |
           cp target/x86_64-unknown-linux-musl/release/mciso mciso-linux-x86_64
-          strip mciso-linux-x86_64
+          cp target/x86_64-unknown-linux-musl/release/upload mciso-upload-linux-x86_64
+          strip mciso-linux-x86_64 mciso-upload-linux-x86_64
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           git tag -f latest && git push -f origin latest
           gh release create latest --title "Latest build" --notes "Automated build of $GITHUB_SHA" \
-            mciso-linux-x86_64 2>/dev/null || {
-            gh release upload latest mciso-linux-x86_64 --clobber
+            mciso-linux-x86_64 mciso-upload-linux-x86_64 2>/dev/null || {
+            gh release upload latest mciso-linux-x86_64 mciso-upload-linux-x86_64 --clobber
             gh release edit latest --notes "Automated build of $GITHUB_SHA"
           }
