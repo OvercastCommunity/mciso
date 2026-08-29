@@ -2,12 +2,15 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -26,3 +29,34 @@ jobs:
         run: cargo build --verbose
       - name: Run tests
         run: cargo test --verbose
+
+  release:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: Swatinem/rust-cache@v2
+      - name: Install musl target
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        run: cargo build --release --target x86_64-unknown-linux-musl
+      - name: Package
+        run: |
+          cp target/x86_64-unknown-linux-musl/release/mciso mciso-linux-x86_64
+          strip mciso-linux-x86_64
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f latest && git push -f origin latest
+          gh release create latest --title "Latest build" --notes "Automated build of $GITHUB_SHA" \
+            mciso-linux-x86_64 2>/dev/null || {
+            gh release upload latest mciso-linux-x86_64 --clobber
+            gh release edit latest --notes "Automated build of $GITHUB_SHA"
+          }
