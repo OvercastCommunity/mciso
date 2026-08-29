@@ -75,6 +75,15 @@ impl TextureArtist {
         )
     }
 
+    #[cfg(feature = "embed-assets")]
+    pub fn default_packs() -> TextureArtist {
+        let bundle = include_bytes!(concat!(env!("OUT_DIR"), "/assets.bundle"));
+        let files =
+            crate::assets::parse_bundle(bundle).expect("embedded asset bundle is malformed");
+        TextureArtist::from_bundle(files)
+    }
+
+    #[cfg(not(feature = "embed-assets"))]
     pub fn default_packs() -> TextureArtist {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let dir = root.join("textures_modern/assets/minecraft/textures/block");

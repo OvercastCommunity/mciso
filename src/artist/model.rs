@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+#[cfg(not(feature = "embed-assets"))]
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -92,6 +93,7 @@ impl ModelStore {
         }
     }
 
+    #[cfg(not(feature = "embed-assets"))]
     pub(super) fn default_assets() -> ModelStore {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("mcassets/assets/minecraft");
         if !root.is_dir() {
